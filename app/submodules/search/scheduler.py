@@ -1,8 +1,3 @@
-"""
-Proactive Search Scheduler — coordinates the fleet of crawler agents.
-Uses APScheduler to run topic-specific agents at varying intervals.
-"""
-
 import asyncio
 from typing import Dict, Type
 
@@ -11,87 +6,38 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.logging import get_logger
 from app.repositories.supabase_strategy import SupabaseStrategyRepository
-from app.repositories.supabase_kpi import SupabaseKpiRepository, CrawlLogRecord
+from app.repositories.supabase_kpi import SupabaseKpiRepository
+from app.repositories.sqs import SQSRepository
 from app.submodules.search.indexer import ContentIndexer
 from app.mcp.tools.search_tools import SearchTools
+from app.submodules.search.base_agent import BaseSearchAgent
+
+# Import all agents
+from app.submodules.search.agents.floods import FloodsAgent
+from app.submodules.search.agents.drought import DroughtAgent
+from app.submodules.search.agents.healthcare import HealthcareAgent
+from app.submodules.search.agents.disaster import DisasterAgent
+from app.submodules.search.agents.welfare import WelfareAgent
+from app.submodules.search.agents.education import EducationAgent
+from app.submodules.search.agents.livelihood import LivelihoodAgent
+from app.submodules.search.agents.environment import EnvironmentAgent
+from app.submodules.search.agents.regional import RegionalSouthAgent, RegionalNortheastAgent
 
 logger = get_logger(__name__)
 
 
-class CrawlerAgent:
-    """Base logic for a topic-specific crawler agent."""
-    def __init__(
-        self,
-        topic: str,
-        strategy_repo: SupabaseStrategyRepository,
-        kpi_repo: SupabaseKpiRepository,
-        search_tools: SearchTools,
-        indexer: ContentIndexer
-    ):
-        self.topic = topic
-        self.strategy_repo = strategy_repo
-        self.kpi_repo = kpi_repo
-        self.search_tools = search_tools
-        self.indexer = indexer
-
-    async def run(self):
-        """Single run of the crawler agent."""
-        logger.info("agent_run_started", topic=self.topic)
-        start_time = asyncio.get_event_loop().time()
-        new_entries = 0
-        total_found = 0
-        
-        try:
-            # 1. Get Strategy
-            strategy = await self.strategy_repo.get_strategy_for_topic(self.topic)
-            if not strategy or not strategy.is_active:
-                logger.info("agent_skipped", topic=self.topic, reason="no_active_strategy")
-                return
-
-            # 2. Search for each query in strategy
-            for query_obj in strategy.search_queries:
-                results = await self.search_tools.web_search(
-                    query=query_obj.query,
-                    max_results=5
-                )
-                total_found += len(results)
-                
-                # 3. Index
-                for res in results:
-                    content = res.get("content", "")
-                    if len(content) < 200: continue
-                    
-                    created = await self.indexer.index(
-                        raw_text=content,
-                        source_url=res["url"],
-                        topic=self.topic,
-                        indexed_by=f"agent_{self.topic}"
-                    )
-                    if created:
-                        new_entries += 1
-
-            # 4. Update Strategy Metadata
-            await self.strategy_repo.update_last_run(
-                topic=self.topic,
-                articles_found=total_found,
-                new_entries=new_entries
-            )
-            
-            # 5. Log KPI
-            log = CrawlLogRecord(
-                agent_name=f"agent_{self.topic}",
-                run_type="scheduled",
-                topic=self.topic,
-                tavily_results_count=total_found,
-                new_entries_count=new_entries,
-                execution_time_ms=int((asyncio.get_event_loop().time() - start_time) * 1000)
-            )
-            await self.kpi_repo.write_crawl_log(log)
-            
-            logger.info("agent_run_complete", topic=self.topic, new=new_entries, total=total_found)
-
-        except Exception as e:
-            logger.error("agent_run_failed", topic=self.topic, error=str(e))
+AGENT_MAP: Dict[str, Type[BaseSearchAgent]] = {
+    "floods": FloodsAgent,
+    "drought": DroughtAgent,
+    "healthcare": HealthcareAgent,
+    "disaster": DisasterAgent,
+    "welfare": WelfareAgent,
+    "education": EducationAgent,
+    "livelihood": LivelihoodAgent,
+    "environment": EnvironmentAgent,
+    "regional_south": RegionalSouthAgent,
+    "regional_northeast": RegionalNortheastAgent,
+}
 
 
 class SearchScheduler:
@@ -99,40 +45,57 @@ class SearchScheduler:
         self,
         strategy_repo: SupabaseStrategyRepository,
         kpi_repo: SupabaseKpiRepository,
+        sqs_repo: SQSRepository,
         search_tools: SearchTools,
         indexer: ContentIndexer
     ):
         self.scheduler = AsyncIOScheduler()
         self.strategy_repo = strategy_repo
         self.kpi_repo = kpi_repo
+        self.sqs_repo = sqs_repo
         self.search_tools = search_tools
         self.indexer = indexer
-        self.agents: Dict[str, CrawlerAgent] = {}
+        self.agents: Dict[str, BaseSearchAgent] = {}
 
-    def register_topic(self, topic: str, interval_hours: float = 1.0):
-        """Register a crawler agent for a specific topic."""
-        agent = CrawlerAgent(
-            topic=topic,
+    def _get_agent(self, topic: str) -> BaseSearchAgent | None:
+        """Instantiate the correct agent for the topic."""
+        agent_class = AGENT_MAP.get(topic)
+        if not agent_class:
+            logger.warning("no_agent_class_found", topic=topic)
+            return None
+            
+        return agent_class(
             strategy_repo=self.strategy_repo,
             kpi_repo=self.kpi_repo,
+            sqs_repo=self.sqs_repo,
             search_tools=self.search_tools,
             indexer=self.indexer
         )
-        self.agents[topic] = agent
-        
-        self.scheduler.add_job(
-            agent.run,
-            trigger=IntervalTrigger(hours=interval_hours),
-            id=f"crawl_{topic}",
-            name=f"Crawl agent for {topic}",
-            replace_existing=True
-        )
-        logger.info("agent_scheduled", topic=topic, interval_hours=interval_hours)
+
+    async def schedule_all_active(self):
+        """Fetch all active strategies and register jobs for them."""
+        strategies = await self.strategy_repo.get_all_active_strategies()
+        for strategy in strategies:
+            if strategy.topic in self.agents:
+                continue
+                
+            agent = self._get_agent(strategy.topic)
+            if agent:
+                self.agents[strategy.topic] = agent
+                self.scheduler.add_job(
+                    agent.run,
+                    trigger=IntervalTrigger(hours=strategy.crawl_frequency_hours),
+                    id=f"crawl_{strategy.topic}",
+                    name=f"Crawl agent for {strategy.topic}",
+                    replace_existing=True
+                )
+                logger.info("agent_scheduled", topic=strategy.topic, interval_hours=strategy.crawl_frequency_hours)
 
     async def start(self):
-        """Start the scheduler."""
+        """Start the scheduler and initial enrollment."""
+        await self.schedule_all_active()
         self.scheduler.start()
-        logger.info("search_scheduler_started")
+        logger.info("search_scheduler_started", active_agents=list(self.agents.keys()))
 
     async def stop(self):
         """Stop the scheduler."""

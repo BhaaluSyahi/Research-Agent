@@ -108,10 +108,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.poller_task = asyncio.create_task(poller.start())
     
     # Scheduler
-    scheduler = SearchScheduler(strategy_repo, kpi_repo, search_tools, indexer)
-    # Register default topics
-    scheduler.register_topic("floods", interval_hours=1.0)
-    scheduler.register_topic("healthcare", interval_hours=2.0)
+    scheduler = SearchScheduler(strategy_repo, kpi_repo, sqs_repo, search_tools, indexer)
     await scheduler.start()
     app.state.scheduler = scheduler
 
