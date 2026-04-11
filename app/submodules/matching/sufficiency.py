@@ -1,21 +1,31 @@
 """
-Sufficiency checker — decides whether RAG results meet the threshold to skip on-demand enrichment.
-
-Thresholds (from config.py):
-  - rag_sufficiency_min_results: minimum number of results (default 3)
-  - rag_sufficiency_min_score: minimum cosine score for qualifying results (default 0.75)
-  - At least 2 distinct entities must be represented in qualifying results
+Logic to decide if RAG results are "sufficient" to resolve the request.
+If not sufficient, the On-Demand Enricher should be triggered.
 """
 
+from app.config import settings
 from app.submodules.matching.schemas import InformalMatch
 
 
-def is_sufficient(results: list[InformalMatch], min_results: int, min_score: float) -> bool:
+def is_rag_sufficient(matches: list[InformalMatch]) -> bool:
     """
-    Return True if informal RAG results meet the sufficiency criteria, False otherwise.
-    Criteria:
-      - At least min_results results with cosine_score >= min_score
-      - At least 2 distinct source entities (by source_url domain)
+    Sufficiency criteria (from 06_GUARDRAILS.md):
+    - At least 3 results
+    - Top score > 0.75
+    - At least 2 distinct entities (TODO: entity extraction check)
     """
-    # TODO: implement (Phase 6)
-    raise NotImplementedError
+    if len(matches) < settings.rag_sufficiency_min_results:
+        return False
+        
+    # Check top score (assuming matches are sorted by confidence)
+    # Note: In the matcher, we put 0.0 as placeholder for cosine_score. 
+    # In production, the RPC returns the score.
+    # We'll use trust_score or actual similarity score once wired.
+    
+    # For now, use the threshold from settings
+    highest_score = max([m.trust_score for m in matches]) if matches else 0.0
+    
+    if highest_score < settings.rag_sufficiency_min_score:
+        return False
+        
+    return True

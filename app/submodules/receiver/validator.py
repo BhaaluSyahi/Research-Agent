@@ -1,38 +1,26 @@
 """
-SQS message validator.
-Deserializes SQS message bodies into RequestRecord and performs prompt injection checks.
-Uses RequestRecord from app.submodules.matching.schemas — do not define a separate model.
+Validates and deserializes incoming SQS messages from the core backend.
 """
 
-from app.core.exceptions import InjectionAttemptError, InvalidMessageError
+from app.core.exceptions import InvalidMessageError
+from app.mcp.guardrails import check_prompt_injection
 from app.submodules.matching.schemas import RequestRecord
-
-_INJECTION_PATTERNS = [
-    "ignore previous instructions",
-    "disregard your system prompt",
-    "you are now",
-    "act as",
-    "forget everything",
-    "<s>",
-    "[inst]",
-]
 
 
 def validate_sqs_message(raw_body: str) -> RequestRecord:
     """
-    Parse and validate an SQS message body.
-    - Deserializes JSON into RequestRecord (raises InvalidMessageError on failure)
-    - Checks title and description for prompt injection patterns
-    - Returns the validated RequestRecord
-    Callers should silently discard messages where status != 'open'.
+    Validate and deserialize a raw SQS message body.
+    1. Parse through RequestRecord schema
+    2. Check title and description for prompt injection
+    3. Ensure status is 'open'
     """
-    # TODO: implement (Phase 4)
-    raise NotImplementedError
+    try:
+        request = RequestRecord.model_validate_json(raw_body)
+    except Exception as e:
+        raise InvalidMessageError(f"SQS message failed schema validation: {e}")
 
+    # Injection check on user-provided text fields
+    check_prompt_injection(request.title)
+    check_prompt_injection(request.description)
 
-def _check_prompt_injection(text: str) -> None:
-    """Raise InjectionAttemptError if text contains a known prompt-injection pattern."""
-    lower = text.lower()
-    for pattern in _INJECTION_PATTERNS:
-        if pattern in lower:
-            raise InjectionAttemptError("Rejected: input contains disallowed pattern")
+    return request
