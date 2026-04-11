@@ -113,6 +113,7 @@ class InformalMatch(BaseModel):
     relevance_reason: str        # LLM-generated: why this is relevant to the specific request
     topic_tags: list[str]
     geo_tags: list[str]
+    entities: Optional[dict] = None  # Extracted entities for sufficiency check
 
 
 class RecommendationPayload(BaseModel):

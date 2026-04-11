@@ -60,10 +60,11 @@ class InformalMatcher:
                     summary=entry.summary,
                     source_url=entry.source_url,
                     trust_score=entry.trust_score or 0.0,
-                    cosine_score=0.0, # The RPC should return this, mapping it here
+                    cosine_score=entry.similarity,
                     relevance_reason="Matched via semantic similarity search.",
                     topic_tags=entry.topic_tags,
-                    geo_tags=entry.geo_tags
+                    geo_tags=entry.geo_tags,
+                    entities=entry.entities.model_dump() if entry.entities else None
                 )
             )
             

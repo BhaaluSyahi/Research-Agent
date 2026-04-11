@@ -47,6 +47,7 @@ class InformalEntry(BaseModel):
     is_active: bool = True
     version: int = 1
     indexed_by: Optional[str] = None
+    similarity: float = 0.0                 # Cosine similarity score returned by RPC
     # NOTE: embedding is excluded — it's a VECTOR type not returned by default selects
 
 
