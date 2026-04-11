@@ -4,8 +4,9 @@ Scores and ranks results based on keywords, verification status, and geography.
 """
 
 import math
+import re
 from datetime import datetime
-from typing import Optional
+from typing import Any, List
 
 from app.core.logging import get_logger
 from app.repositories.supabase_formal import SupabaseFormalRepository
@@ -24,9 +25,9 @@ class FormalMatcher:
     """
     Implements the formal matching layer.
     Scores entities (orgs/volunteers) based on:
-    1. Keyword overlap (30%)
-    2. Proximity (40% if geo available)
-    3. Trust/Verification (30% for orgs)
+    1. Keyword overlap
+    2. Proximity (if available)
+    3. Trust/Verification (for organizations)
     """
 
     def __init__(self, formal_repo: SupabaseFormalRepository):
@@ -39,10 +40,14 @@ class FormalMatcher:
         logger.info("formal_matching_started", request_id=str(request.id))
         
         # 1. Fetch available entities
-        orgs = await self.formal_repo.get_registered_organizations()
-        volunteers = await self.formal_repo.get_active_volunteers()
-        
-        matches = []
+        try:
+            orgs = await self.formal_repo.get_registered_organizations()
+            volunteers = await self.formal_repo.get_active_volunteers()
+        except Exception as e:
+            logger.error("entity_fetch_failed", error=str(e), request_id=str(request.id))
+            raise
+
+        matches: List[FormalMatch] = []
         
         # 2. Score Organizations
         for org in orgs:
@@ -53,7 +58,7 @@ class FormalMatcher:
                         entity_type="organization",
                         entity_id=org.id,
                         name=org.name,
-                        confidence=score,
+                        confidence=round(score, 3),
                         reason=self._get_match_reason(request, org),
                         verified=org.verified
                     )
@@ -68,7 +73,7 @@ class FormalMatcher:
                         entity_type="volunteer",
                         entity_id=vol.id,
                         name=vol.name,
-                        confidence=score,
+                        confidence=round(score, 3),
                         reason=self._get_match_reason(request, vol),
                         verified=False
                     )
@@ -93,88 +98,102 @@ class FormalMatcher:
         )
 
     def _score_organization(self, request: RequestRecord, org: OrganizationRecord) -> float:
-        """Compute match score for an organization (0.0 - 1.0)."""
+        """
+        Compute match score for an organization (0.0 - 1.0).
+        Weighting:
+          - Keyword Overlap: 50%
+          - Verification: 50%
+        (Note: Organizations lack coordinates in current schema)
+        """
         score = 0.0
         
-        # Keyword overlap (30%)
-        keyword_score = self._compute_keyword_overlap(
-            request.title + " " + request.description,
-            org.name + " " + (org.description or "")
-        )
-        score += keyword_score * 0.3
+        # Keyword overlap (50%)
+        # Combine title and description for request, name and description for org
+        req_text = f"{request.title} {request.description}"
+        org_text = f"{org.name} {org.description or ''}"
+        keyword_score = self._compute_keyword_overlap(req_text, org_text)
+        score += keyword_score * 0.5
         
-        # Trust (30%): Verified orgs get a boost
+        # Verification (50%)
         if org.verified:
-            score += 0.3
+            score += 0.5
             
-        # Proximity (40%)
-        geo_score = self._compute_geo_score(request, org.id) # We don't have org lat/lng in schema, so 0 for now
-        # Wait, organization schema doesn't have lat/lng?
-        # Checked 03_SCHEMA: organizations table has no lat/lng. 
-        # Only volunteer_profiles and requests have them.
-        score += geo_score * 0.4
-        
         return min(score, 1.0)
 
     def _score_volunteer(self, request: RequestRecord, vol: VolunteerProfileRecord) -> float:
-        """Compute match score for a volunteer (0.0 - 1.0)."""
+        """
+        Compute match score for a volunteer (0.0 - 1.0).
+        Weighting:
+          - Keyword Overlap: 40%
+          - Proximity: 60%
+        """
         score = 0.0
         
-        # Keyword overlap (30%)
-        keyword_score = self._compute_keyword_overlap(
-            request.title + " " + request.description,
-            vol.specialty or "" + " " + (vol.bio or "")
-        )
-        score += keyword_score * 0.3
+        # Keyword overlap (40%)
+        req_text = f"{request.title} {request.description}"
+        vol_text = f"{vol.name} {vol.specialty or ''} {vol.bio or ''}"
+        keyword_score = self._compute_keyword_overlap(req_text, vol_text)
+        score += keyword_score * 0.4
         
-        # Proximity (70% - since no 'verified' for individuals)
+        # Proximity (60%)
         geo_score = self._compute_geo_score(request, vol)
-        score += geo_score * 0.7
+        score += geo_score * 0.6
         
         return min(score, 1.0)
 
     def _compute_keyword_overlap(self, text1: str, text2: str) -> float:
-        """Simple Jaccard-ish similarity on cleaned tokens."""
-        def get_tokens(t): return set(re.findall(r"\w+", t.lower()))
+        """Jaccard-like similarity on word tokens."""
+        def get_tokens(t): 
+            return set(re.findall(r"\w+", t.lower()))
+            
         s1, s2 = get_tokens(text1), get_tokens(text2)
-        if not s1 or not s2: return 0.0
+        if not s1 or not s2: 
+            return 0.0
+            
         intersection = s1.intersection(s2)
-        # Weight important words (flood, rescue, etc.) if needed, but keeping it simple for now
-        return len(intersection) / min(len(s1), 20) # Normalize by request tokens cap
+        # Normalize by the smaller set or a fixed representative length to avoid over-rewarding brevity
+        # Using a capped length for request ensures we don't need a huge intersection for long descriptions
+        return len(intersection) / min(len(s1), 15)
 
-    def _compute_geo_score(self, request: RequestRecord, entity: any) -> float:
-        """Score based on Haversine distance (1.0 = same spot, 0.0 = far)."""
+    def _compute_geo_score(self, request: RequestRecord, entity: Any) -> float:
+        """Score based on Haversine distance (1.0 = near, 0.0 = far)."""
         if not request.latitude or not request.longitude:
             return 0.5 # Neutral if no request location
             
-        if not hasattr(entity, "latitude") or not entity.latitude:
+        if not hasattr(entity, "latitude") or not getattr(entity, "latitude"):
             return 0.5 # Neutral if no entity location
             
         try:
             r_lat, r_lng = float(request.latitude), float(request.longitude)
             e_lat, e_lng = float(entity.latitude), float(entity.longitude)
             
-            # Simple Haversine (short version)
             dist_km = self._haversine(r_lat, r_lng, e_lat, e_lng)
             
-            # 1.0 at 0km, 0.5 at 50km, 0.0 at 500km+
-            if dist_km < 1: return 1.0
-            score = 1.0 - (math.log10(dist_km + 1) / 3.0) # approx 0 at 1000km
+            # Decay score based on distance
+            # 1.0 at 0km, ~0.5 at 50km, ~0.0 at 500km
+            if dist_km < 1: 
+                return 1.0
+            score = 1.0 - (math.log10(dist_km + 1) / 2.7) # log10(500) is approx 2.7
             return max(0.0, min(1.0, score))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, ZeroDivisionError):
             return 0.5
 
-    def _haversine(self, lat1, lon1, lat2, lon2):
+    def _haversine(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Compute distance in km between two points."""
         R = 6371 # Earth radius in km
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
-        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-        c = 2 * math.asin(math.sqrt(a))
+        a = (math.sin(dlat/2)**2 + 
+             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2)
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
 
-    def _get_match_reason(self, request: RequestRecord, entity: any) -> str:
-        """Simple string explaining why it matched."""
-        # This will be refined with LLM help in later phases, but for formal it's rule-based
+    def _get_match_reason(self, request: RequestRecord, entity: Any) -> str:
+        """Generate a brief explanation for the match."""
         if isinstance(entity, OrganizationRecord):
-            return f"Registered {entity.type} matched by keywords and verification status."
-        return f"Volunteer matched by specialty/bio overlap and location."
+            reason_parts = [f"Registered {entity.type}"]
+            if entity.verified:
+                reason_parts.append("verified for trust")
+            return " — ".join(reason_parts) + "."
+        
+        return "Volunteer profile matched by specialty and locality."
