@@ -59,9 +59,18 @@ class MatchingPipeline:
                 on_demand_triggered = True
                 
                 # 4. On-Demand Enrichment
+                # Attempt to get a better topic for search
+                try:
+                    classification = await self.on_demand_enricher.search_tools.classify_request(
+                        request.title, request.description
+                    )
+                    primary_topic = classification.get("primary_topic", "general")
+                except Exception:
+                    primary_topic = "general"
+
                 new_articles = await self.on_demand_enricher.enrich_and_retry(
                     request=request,
-                    topic="general" # Dynamic topic extraction can be added here
+                    topic=primary_topic
                 )
                 
                 # 5. Retry RAG with fresh news

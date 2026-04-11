@@ -84,9 +84,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     indexer = ContentIndexer(informal_repo, embedding_tools)
     
     # 4. Initialize Core Logic
+    from app.submodules.search.intent_lock import IntentLock
+    intent_lock = IntentLock(sqs_repo)
+    
     formal_matcher = FormalMatcher(formal_repo)
     informal_matcher = InformalMatcher(informal_repo, openai_repo)
-    on_demand_enricher = OnDemandEnricher(search_tools, indexer)
+    on_demand_enricher = OnDemandEnricher(search_tools, indexer, intent_lock)
     merger = ResultMerger()
     
     pipeline = MatchingPipeline(
