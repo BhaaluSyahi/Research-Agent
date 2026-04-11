@@ -37,12 +37,17 @@ async def test_base_agent_run_success(mock_repos):
         updated_at=datetime.utcnow()
     )
     mock_repos["strategy_repo"].get_strategy_for_topic.return_value = strategy
-    mock_repos["search_tools"].web_search.return_value = [{"url": "http://test.com", "content": "long enough content for indexing"}]
+    mock_repos["search_tools"].web_search.return_value = [{
+        "url": "http://test.com", 
+        "content": "A" * 201 # Long enough for indexing guardrail
+    }]
     mock_repos["indexer"].index.return_value = True
 
     with patch("app.submodules.search.base_agent.IntentLock") as MockLock:
         mock_lock_instance = MockLock.return_value
-        mock_lock_instance.acquire = AsyncMock()
+        # Mock the async context manager
+        mock_lock_instance.acquire.return_value.__aenter__ = AsyncMock(return_value=True)
+        mock_lock_instance.acquire.return_value.__aexit__ = AsyncMock(return_value=None)
         
         agent = MockAgent(**mock_repos)
         await agent.run()

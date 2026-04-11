@@ -56,6 +56,7 @@ class SearchScheduler:
         self.search_tools = search_tools
         self.indexer = indexer
         self.agents: Dict[str, BaseSearchAgent] = {}
+        self.last_runs: Dict[str, datetime] = {}
 
     def _get_agent(self, topic: str) -> BaseSearchAgent | None:
         """Instantiate the correct agent for the topic."""
@@ -72,6 +73,14 @@ class SearchScheduler:
             indexer=self.indexer
         )
 
+    async def _run_agent(self, topic: str):
+        """Wrapper to run agent and track timestamp."""
+        agent = self.agents.get(topic)
+        if agent:
+            await agent.run()
+            from datetime import datetime
+            self.last_runs[topic] = datetime.utcnow()
+
     async def schedule_all_active(self):
         """Fetch all active strategies and register jobs for them."""
         strategies = await self.strategy_repo.get_all_active_strategies()
@@ -83,13 +92,22 @@ class SearchScheduler:
             if agent:
                 self.agents[strategy.topic] = agent
                 self.scheduler.add_job(
-                    agent.run,
+                    self._run_agent,
                     trigger=IntervalTrigger(hours=strategy.crawl_frequency_hours),
+                    args=[strategy.topic],
                     id=f"crawl_{strategy.topic}",
                     name=f"Crawl agent for {strategy.topic}",
                     replace_existing=True
                 )
                 logger.info("agent_scheduled", topic=strategy.topic, interval_hours=strategy.crawl_frequency_hours)
+
+    def get_status(self) -> dict:
+        """Return status info for monitoring."""
+        return {
+            "running": self.scheduler.running,
+            "active_agents": list(self.agents.keys()),
+            "last_run_times": {t: ts.isoformat() for t, ts in self.last_runs.items()}
+        }
 
     async def start(self):
         """Start the scheduler and initial enrollment."""

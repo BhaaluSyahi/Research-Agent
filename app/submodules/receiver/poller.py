@@ -38,6 +38,7 @@ class RequestPoller:
         self.queue_url = queue_url
         self.pipeline = pipeline
         self._running = False
+        self.last_poll_at: Optional[datetime] = None
 
     async def start(self) -> None:
         """Begin the polling loop. Runs indefinitely until stop() is called."""
@@ -46,6 +47,8 @@ class RequestPoller:
 
         while self._running:
             try:
+                from datetime import datetime
+                self.last_poll_at = datetime.utcnow()
                 messages = await self.sqs_repo.poll_messages(
                     queue_url=self.queue_url,
                     max_messages=1,
@@ -66,6 +69,13 @@ class RequestPoller:
         """Gracefully stop the polling loop."""
         self._running = False
         logger.info("request_poller_stopping")
+
+    def get_status(self) -> dict:
+        """Return status info for monitoring."""
+        return {
+            "running": self._running,
+            "last_poll_at": self.last_poll_at.isoformat() if self.last_poll_at else None
+        }
 
     async def _process_message(self, message) -> None:
         """Internal processing logic for a single SQS message."""

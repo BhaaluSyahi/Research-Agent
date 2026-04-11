@@ -15,9 +15,9 @@ class HealthResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
-    scheduler_running: bool
-    poller_running: bool
-    # TODO Phase 10: extend with last_run_times, queue_depths, hit_rate
+    scheduler: dict
+    poller: dict
+    hit_rate: float
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -27,10 +27,15 @@ async def health() -> HealthResponse:
 
 
 @router.get("/status", response_model=StatusResponse)
-async def status() -> StatusResponse:
-    """Operational status — extended in Phase 10."""
+async def status(request: Request) -> StatusResponse:
+    """Operational status — aggregated from background tasks."""
+    scheduler = request.app.state.scheduler
+    poller = request.app.state.poller
+    kpi_repo = request.app.state.kpi_repo
+    
     return StatusResponse(
         status="ok",
-        scheduler_running=False,  # TODO Phase 10
-        poller_running=False,     # TODO Phase 10
+        scheduler=scheduler.get_status(),
+        poller=poller.get_status(),
+        hit_rate=await kpi_repo.get_hit_rate()
     )

@@ -63,6 +63,10 @@ class BaseSearchAgent(ABC):
         total_found: int = 0
         new_entries: int = 0
         failed_count: int = 0
+        skipped_count: int = 0
+        
+        llm_calls = 0
+        tavily_calls = 0
         
         try:
             # 1. Fetch Strategy
@@ -71,45 +75,62 @@ class BaseSearchAgent(ABC):
                 logger.info("agent_skipped", topic=self.topic, reason="no_active_strategy")
                 return
 
-            # 2. Process each query in the strategy
-            for query_obj in strategy.search_queries:
-                # 2a. Acquire intent lock (using first geo focus or 'national')
-                geo = strategy.geo_focus[0] if strategy.geo_focus else "national"
-                year = datetime.utcnow().year
-                
-                try:
-                    await self.intent_lock.acquire(topic=self.topic, geo=geo, year=year)
-                except Exception as e:
-                    logger.warning("intent_lock_skipped", topic=self.topic, geo=geo, error=str(e))
-                    # Continue anyway or skip? Build order says "Acquire intent lock", 
-                    # but if it fails (e.g. SQS down), we might still want to try if we can.
-                    # However, to be safe and follow the lock pattern, we should continue.
-                
-                # 2b. Web Search
-                try:
-                    results = await self.search_tools.web_search(
-                        query=query_obj.query,
-                        max_results=settings.crawler_max_articles_per_run if hasattr(settings, 'crawler_max_articles_per_run') else 10
-                    )
-                    total_found += len(results)
-                    
-                    # 2c. Index Results
-                    for res in results:
-                        try:
-                            created = await self.indexer.index(
-                                raw_text=res.get("content", ""),
-                                source_url=res["url"],
-                                topic=self.topic,
-                                indexed_by=self.agent_name
-                            )
-                            if created:
-                                new_entries += 1
-                        except Exception as e:
-                            logger.error("indexing_failed", url=res.get("url"), error=str(e))
-                            failed_count += 1
-                except Exception as e:
-                    logger.error("search_failed", query=query_obj.query, error=str(e))
-                    failed_count += 1
+            # 2. Intent Lock (MessageGroupId = topic#geo#year)
+            geo = strategy.geo_focus[0] if strategy.geo_focus else "india"
+            year = datetime.utcnow().year
+            message_group_id = f"{self.topic}#{geo}#{year}"
+            
+            async with self.intent_lock.acquire(message_group_id) as locked:
+                if not locked:
+                    logger.info("agent_lock_failed", topic=self.topic, group_id=message_group_id)
+                    return
+
+                # 3. Search for each query in strategy
+                queries = strategy.search_queries[:settings.max_tavily_calls_per_crawl_run]
+                for query_obj in queries:
+                    if tavily_calls >= settings.max_tavily_calls_per_crawl_run:
+                        logger.warning("agent_tavily_limit_reached", topic=self.topic)
+                        break
+                        
+                    try:
+                        results = await self.search_tools.web_search(
+                            query=query_obj.query,
+                            max_results=settings.crawler_max_articles_per_run
+                        )
+                        tavily_calls += 1
+                        total_found += len(results)
+                        
+                        # 4. Index
+                        for res in results:
+                            if new_entries >= settings.max_articles_per_crawl_run:
+                                logger.warning("agent_article_limit_reached", topic=self.topic)
+                                break
+                            if llm_calls >= settings.max_llm_calls_per_crawl_run:
+                                logger.warning("agent_llm_limit_reached", topic=self.topic)
+                                break
+                                
+                            content = res.get("content", "")
+                            if len(content) < 200: 
+                                skipped_count += 1
+                                continue
+                            
+                            try:
+                                created = await self.indexer.index(
+                                    raw_text=content,
+                                    source_url=res["url"],
+                                    topic=self.topic,
+                                    indexed_by=self.agent_name
+                                )
+                                llm_calls += 1 
+                                
+                                if created:
+                                    new_entries += 1
+                            except Exception as e:
+                                logger.error("index_failed", url=res.get("url"), error=str(e))
+                                failed_count += 1
+                    except Exception as e:
+                        logger.error("search_failed", query=query_obj.query, error=str(e))
+                        failed_count += 1
 
             # 3. Update Strategy Metadata
             await self.strategy_repo.update_last_run(

@@ -1,66 +1,66 @@
-# Matching Engine
+# Matching Engine Microservice
 
-Standalone Python microservice that intelligently matches help requests with NGOs and volunteers using formal DB queries and informal RAG-based knowledge retrieval.
+Production-grade research and matching engine for connecting help requests with NGO resources.
+
+## Features
+
+- **Proactive Search Fleet**: Topic-specific agents that crawl the web for NGO data based on dynamic strategies.
+- **On-Demand Enrichment**: Fast-path search triggered when local knowledge is insufficient for a match.
+- **Hybrid Matching**: Combines semantic RAG search with metadata-based formal verification.
+- **Cost Controls**: Hard limits on LLM and Tavily usage to prevent runaway costs.
+- **Structured Logging**: JSON logs for all operations, indexed for observability.
+- **Operational Monitoring**: Real-time status endpoints for fleet and pipeline health.
 
 ## Tech Stack
 
-- **Python 3.11+** · **FastAPI** · **uv** (package manager)
-- **Supabase** (PostgreSQL + pgvector) · **AWS SQS/SNS** · **LlamaIndex**
-- **OpenAI** (gpt-4o + text-embedding-3-small) · **Tavily** · **APScheduler**
+- **FastAPI**: Main API framework.
+- **Supabase**: PostgreSQL DB, Vector storage (pgvector), and Edge Functions.
+- **AWS SQS**: Message queue for decoupled request processing and enrichment jobs.
+- **OpenAI**: Embeddings and GPT-4o for classification, summarization, and matching.
+- **Tavily**: Web search optimized for LLM agents.
+
+## Implementation Details
+
+### Cost Controls
+The engine enforces several guardrails:
+- `MAX_LLM_CALLS_PER_REQUEST`: 5
+- `MAX_TAVILY_CALLS_PER_REQUEST`: 10
+- `MAX_ARTICLES_PER_CRAWL_RUN`: 20
+- `MAX_LLM_CALLS_PER_CRAWL_RUN`: 25
+
+### Monitoring
+- `GET /health`: Basic liveness check.
+- `GET /status`: Detailed operational metrics including scheduler status, crawler last run times, and matching hit rate.
 
 ## Setup
 
-1. **Install dependencies**
-   ```bash
-   uv sync
-   ```
+1.  **Clone the repository**
+2.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Configure Environment Variables**:
+    Create a `.env` file with:
+    - `SUPABASE_URL`
+    - `SUPABASE_KEY` (Service Role)
+    - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
+    - `SQS_REQUESTS_QUEUE_URL`
+    - `OPENAI_API_KEY`
+    - `TAVILY_API_KEY`
 
-2. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
+4.  **Seed Search Strategies**:
+    ```bash
+    python -m scripts.seed_strategy
+    ```
 
-3. **Run migrations** (Supabase SQL editor — run in order)
-   ```
-   migrations/001_informal_knowledge_base.sql
-   migrations/002_search_strategy.sql
-   migrations/003_kpis_and_logs.sql
-   migrations/seed_search_strategy.sql
-   ```
+5.  **Run the application**:
+    ```bash
+    uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ```
 
-4. **Start the server**
-   ```bash
-   uv run uvicorn app.main:app --reload
-   ```
+## Testing
 
-5. **Verify**
-   ```bash
-   curl http://localhost:8000/health
-   # {"status":"ok"}
-   ```
-
-## Project Structure
-
-See [`antigravity-context/04_CODE_STRUCTURE.md`](antigravity-context/04_CODE_STRUCTURE.md) for the full directory layout.
-
-## Build Phases
-
-| Phase | Goal | Status |
-|---|---|---|
-| 1 | Scaffold | ✅ Complete |
-| 2 | Repositories | 🔲 |
-| 3 | MCP Tools + Guardrails | 🔲 |
-| 4 | Request Receiver | 🔲 |
-| 5 | Formal Matching | 🔲 |
-| 6 | Informal Matching (RAG) | 🔲 |
-| 7 | On-Demand Enricher | 🔲 |
-| 8 | Full Pipeline | 🔲 |
-| 9 | Proactive Search Fleet | 🔲 |
-| 10 | Hardening | 🔲 |
-
-## Running Tests
-
+Run unit tests:
 ```bash
-uv run pytest
+pytest tests/unit
 ```

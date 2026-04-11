@@ -103,3 +103,24 @@ class SupabaseKpiRepository(BaseRepository):
                 error=str(exc),
             )
             raise RepositoryError(f"Failed to write crawl log for agent {log.agent_name}: {exc}") from exc
+    async def get_hit_rate(self) -> float:
+        """
+        Calculate hit rate over the last 24 hours.
+        Hit = formal_matches_count + informal_matches_count > 0
+        """
+        try:
+            # This is a bit inefficient without a dedicated RPC but works for small scale
+            # In Phase 10 we just need to verify the metric
+            from datetime import timedelta
+            since = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+            
+            res = await self.client.table("matching_kpis").select("formal_matches_count, informal_matches_count").gt("pipeline_started_at", since).execute()
+            data = res.data or []
+            if not data:
+                return 0.0
+                
+            hits = sum(1 for r in data if (r.get("formal_matches_count", 0) + r.get("informal_matches_count", 0)) > 0)
+            return round(hits / len(data), 2)
+        except Exception as e:
+            logger.error("get_hit_rate_failed", error=str(e))
+            return 0.0

@@ -56,41 +56,54 @@ class OnDemandEnricher:
             geo = "India"
             year = datetime.now().year
 
-        # 2. Intent Lock
-        try:
-            await self.intent_lock.acquire(topic=topic, geo=geo, year=year)
-        except IntentLockError:
-            logger.info("intent_already_claimed_skipping_search", topic=topic, geo=geo)
-            return 0
+        # 2. Intent Lock (topic#geo#year)
+        message_group_id = f"{topic}#{geo}#{year}"
+        
+        async with self.intent_lock.acquire(message_group_id) as locked:
+            if not locked:
+                logger.info("intent_already_claimed_skipping_search", group_id=message_group_id)
+                return 0
 
-        # 3. Optimized query generation
-        query = f"NGO volunteer rescue help {topic} in {geo} {request.title}"
-        
-        # 4. Search
-        try:
-            results = await self.search_tools.web_search(query=query, max_results=5)
-        except Exception as e:
-            logger.error("web_search_failed", error=str(e))
-            return 0
-        
-        new_count = 0
-        # 5. Index
-        for res in results:
-            try:
-                created = await self.indexer.index(
-                    raw_text=res.get("content", ""),
-                    source_url=res["url"],
-                    topic=topic,
-                    indexed_by="on_demand_enricher"
-                )
-                if created:
-                    new_count += 1
-            except Exception as e:
-                logger.warning("article_indexing_failed", url=res.get("url"), error=str(e))
+            # 3. Optimized query generation
+            query = f"NGO volunteer rescue help {topic} in {geo} {request.title}"
+            
+            from app.config import settings
+            llm_calls = 0
+            tavily_calls = 0
+            new_count = 0
+            
+            # 4. Search
+            if tavily_calls >= settings.max_tavily_calls_per_request:
+                return 0
                 
-        logger.info(
-            "on_demand_enrichment_complete", 
-            request_id=str(request.id), 
-            new_articles=new_count
-        )
-        return new_count
+            try:
+                results = await self.search_tools.web_search(query=query, max_results=5)
+                tavily_calls += 1
+            except Exception as e:
+                logger.error("web_search_failed", error=str(e))
+                return 0
+            
+            # 5. Index
+            for res in results:
+                if new_count >= settings.max_llm_calls_per_request: # Summarization limit
+                    break
+                    
+                try:
+                    created = await self.indexer.index(
+                        raw_text=res.get("content", ""),
+                        source_url=res["url"],
+                        topic=topic,
+                        indexed_by="on_demand_enricher"
+                    )
+                    llm_calls += 1
+                    if created:
+                        new_count += 1
+                except Exception as e:
+                    logger.warning("article_indexing_failed", url=res.get("url"), error=str(e))
+                    
+            logger.info(
+                "on_demand_enrichment_complete", 
+                request_id=str(request.id), 
+                new_articles=new_count
+            )
+            return new_count
