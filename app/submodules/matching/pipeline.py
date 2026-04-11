@@ -11,6 +11,7 @@ from app.submodules.matching.informal_matcher import InformalMatcher
 from app.submodules.matching.sufficiency import is_rag_sufficient
 from app.submodules.matching.merger import ResultMerger
 from app.submodules.search.on_demand import OnDemandEnricher
+from app.config import settings
 from app.mcp.tools.db_tools import DBTools
 from app.submodules.matching.schemas import RequestRecord
 
@@ -86,11 +87,14 @@ class MatchingPipeline:
             )
 
             # 7. Persist Recommendations
-            await self.db_tools.write_recommendation(
-                request_id=str(request.id),
-                formal_matches=[m.model_dump(mode="json") for m in payload.formal_matches],
-                informal_matches=[m.model_dump(mode="json") for m in payload.informal_matches]
-            )
+            if not settings.dry_run:
+                await self.db_tools.write_recommendation(
+                    request_id=str(request.id),
+                    formal_matches=[m.model_dump(mode="json") for m in payload.formal_matches],
+                    informal_matches=[m.model_dump(mode="json") for m in payload.informal_matches]
+                )
+            else:
+                logger.info("dry_run_enabled_skipping_write", request_id=str(request.id))
 
         except Exception as e:
             logger.error("pipeline_failed", request_id=str(request.id), error=str(e))

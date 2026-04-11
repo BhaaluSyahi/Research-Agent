@@ -3,6 +3,7 @@ Matching Engine — FastAPI application entry point with dependency initializati
 """
 
 from contextlib import asynccontextmanager
+import asyncio
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -103,7 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 5. Start Background Tasks
     # Poller
-    poller = RequestPoller(sqs_repo, formal_repo, settings.sqs_request_queue_url)
+    poller = RequestPoller(sqs_repo, formal_repo, settings.sqs_requests_queue_url, pipeline)
     app.state.poller_task = asyncio.create_task(poller.start())
     
     # Scheduler

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     tavily_api_key: str
 
     # Matching thresholds
+    dry_run: bool = False
     rag_sufficiency_min_results: int = 3
     rag_sufficiency_min_score: float = 0.75
     rag_top_k: int = 20

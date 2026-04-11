@@ -10,6 +10,8 @@ from app.core.logging import get_logger
 from app.repositories.sqs import SQSRepository
 from app.repositories.supabase_formal import SupabaseFormalRepository
 from app.submodules.receiver.validator import validate_sqs_message
+from app.submodules.matching.pipeline import MatchingPipeline
+from app.core.exceptions import InvalidMessageError, ToolGuardrailError
 
 logger = get_logger(__name__)
 
@@ -20,7 +22,7 @@ class RequestPoller:
     Steps for each message:
       1. Validate via validate_sqs_message()
       2. Set status to 'in_progress' in formal DB
-      3. [TODO] Call MatchingPipeline
+      3. Call MatchingPipeline
       4. Ack/Delete message from SQS
     """
 
@@ -29,10 +31,12 @@ class RequestPoller:
         sqs_repo: SQSRepository,
         formal_repo: SupabaseFormalRepository,
         queue_url: str,
+        pipeline: MatchingPipeline
     ):
         self.sqs_repo = sqs_repo
         self.formal_repo = formal_repo
         self.queue_url = queue_url
+        self.pipeline = pipeline
         self._running = False
 
     async def start(self) -> None:
@@ -65,6 +69,7 @@ class RequestPoller:
 
     async def _process_message(self, message) -> None:
         """Internal processing logic for a single SQS message."""
+        request_record = None
         try:
             # 1. Validation
             request_record = validate_sqs_message(message.body)
@@ -83,14 +88,28 @@ class RequestPoller:
                 agent_research_status="in_progress"
             )
 
-            # 3. [Phase 8] Pipeline call goes here
-            # For now, we'll just log and ack
-            logger.info("request_processing_stub", request_id=str(request_record.id))
+            # 3. Pipeline call
+            await self.pipeline.run(request_record)
 
             # 4. Acknowledge
             await self.sqs_repo.delete_message(self.queue_url, message.receipt_handle)
             logger.info("request_acknowledged", request_id=str(request_record.id))
 
+        except (InvalidMessageError, ToolGuardrailError) as e:
+            # Poison pill: ACK/Delete but log as failure
+            logger.error("permanent_failure_poison_pill", error=str(e), message_id=message.message_id)
+            if request_record:
+                await self.formal_repo.update_request_status(
+                    request_id=request_record.id,
+                    agent_research_status="failed"
+                )
+            await self.sqs_repo.delete_message(self.queue_url, message.receipt_handle)
+            
         except Exception as e:
-            logger.error("message_processing_failed", error=str(e), message_id=message.message_id)
-            # We don't delete here; SQS visibility timeout will expire and it will be retried or DLQ'd
+            # Transient failure: Let SQS retry
+            logger.error("transient_processing_failed", error=str(e), message_id=message.message_id)
+            if request_record:
+                await self.formal_repo.update_request_status(
+                    request_id=request_record.id,
+                    agent_research_status="pending" # Reset to pending for retry
+                )
