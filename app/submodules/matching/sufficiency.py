@@ -9,7 +9,7 @@ from app.submodules.matching.schemas import InformalMatch
 
 def is_rag_sufficient(matches: list[InformalMatch]) -> bool:
     """
-    Sufficiency criteria (from 06_GUARDRAILS.md):
+    Sufficiency criteria (at least for now):
     - At least 3 results
     - Top score > 0.75
     - At least 2 distinct entities (people or orgs) across the matches

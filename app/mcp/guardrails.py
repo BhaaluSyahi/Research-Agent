@@ -1,8 +1,3 @@
-"""
-Input, tool-call, and output guardrails for all MCP tool interactions.
-Three-layer defence as specified in 06_GUARDRAILS.md.
-"""
-
 import re
 from typing import Any, Optional, Type, TypeVar
 from uuid import UUID
@@ -28,22 +23,20 @@ _INJECTION_PATTERNS = [
     "forget everything",
     "<s>",
     "[inst]",
-]
+] # Claude code is no better themselves so...
 
 _BLOCKED_DOMAINS: list[str] = [
     "doubleclick.net",
     "googleadservices.com",
     "facebook.com/ads",
-]
+] # Will reallistically need to add tonnes more
 
 _PII_PATTERNS = [
     r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",  # Email
     r"\+?(\d{1,3})?[-.\s]?(\d{3})[-.\s]?(\d{3})[-.\s]?(\d{4})",  # Phone (US/Intl general)
-]
+] # Also need to add more
 
-
-# ── Layer 1: Input ────────────────────────────────────────────────────────────
-
+# Layer 1: Input
 def check_prompt_injection(text: str) -> None:
     """Raise InjectionAttemptError if text contains a prompt-injection pattern."""
     lower = text.lower()
@@ -70,8 +63,7 @@ def strip_and_truncate_article(raw: str, max_chars: int = 8000) -> str:
     return truncated
 
 
-# ── Layer 2: Tool Call ────────────────────────────────────────────────────────
-
+# Layer 2: Tool Call
 def validate_tool_call(tool_name: str, tool_input: dict, registered_tools: set[str]) -> None:
     """
     Universal pre-execution guardrail for every tool call.
@@ -117,8 +109,7 @@ async def validate_write_recommendation(
         tool_input["informal_matches"] = tool_input["informal_matches"][:10]
 
 
-# ── Layer 3: Output ───────────────────────────────────────────────────────────
-
+# Layer 3: Output
 def validate_llm_output(raw_output: str, expected_model: Type[T]) -> T:
     """
     Parse LLM JSON output through the expected Pydantic model.

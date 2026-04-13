@@ -11,7 +11,6 @@ from app.submodules.matching.schemas import InformalMatch, RequestRecord
 
 logger = get_logger(__name__)
 
-
 class InformalMatcher:
     def __init__(
         self, 

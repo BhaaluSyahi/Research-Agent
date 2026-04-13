@@ -33,7 +33,7 @@ class DBTools:
         
         all_orgs = await self.formal_repo.get_registered_organizations()
         
-        # Simple keyword filter (to be replaced by DB-side full text search in future)
+        # Simple keyword filter (will try to replace it by DB-side full text search in future)
         matches = []
         for org in all_orgs:
             content = f"{org.name} {org.description or ''}".lower()

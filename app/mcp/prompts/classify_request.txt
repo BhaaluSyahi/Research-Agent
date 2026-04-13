@@ -1,11 +1,3 @@
-# System Prompt: classify_request Tool
-
-**File location in service:** `app/mcp/tools/search_tools.py`
-**Loaded at:** MCP server startup, injected into every `classify_request` tool call.
-**Used by:** Matching pipeline — Step 1 before formal and informal search.
-
----
-
 ## System Prompt (copy verbatim into code)
 
 ```
@@ -37,43 +29,3 @@ OUTPUT SCHEMA:
   "summary_for_search": "<string>"        // one sentence, under 100 chars, suitable as a web search query
 }
 ```
-
----
-
-## Usage in Code
-
-```python
-# app/mcp/tools/search_tools.py
-
-CLASSIFY_SYSTEM_PROMPT = open("app/mcp/prompts/classify_request.txt").read()
-# Note: extract the prompt string from this MD file and store as a plain .txt
-# at app/mcp/prompts/classify_request.txt — load it at startup, not at call time.
-
-async def classify_request(title: str, description: str, location_text: str | None) -> ClassificationResult:
-    user_content = f"""<user_request>
-Title: {title}
-Description: {description}
-Location: {location_text or "not specified"}
-</user_request>"""
-
-    response = await openai_client.chat_complete(
-        system=CLASSIFY_SYSTEM_PROMPT,
-        user=user_content,
-        temperature=0.0,        # deterministic — classification should not vary
-        max_tokens=200,
-        response_format={"type": "json_object"}
-    )
-    return ClassificationResult.model_validate_json(response)
-```
-
----
-
-## Guardrail: Post-Classification Validation
-
-After parsing the LLM response, enforce these rules in `app/mcp/guardrails.py`:
-
-- Drop any `topic_tags` value not in the allowed topics list — do not raise, just silently drop.
-- If all topic_tags are dropped (all were unrecognized), set `topic_tags = ["other"]`.
-- `geo_tags` must be a non-empty list — if empty or missing, set `["india"]`.
-- `urgency` must be exactly one of `"high"`, `"medium"`, `"low"` — default to `"medium"` if missing.
-- `summary_for_search` must be under 150 characters — truncate if exceeded.

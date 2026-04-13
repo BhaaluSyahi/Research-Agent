@@ -1,10 +1,3 @@
-# System Prompt: summarize_and_extract Tool
-
-**File location in service:** `app/mcp/tools/search_tools.py`
-**Loaded at:** MCP server startup.
-**Used by:** Proactive crawler agents and On-Demand Enricher — after Tavily returns raw article text.
-
----
 
 ## System Prompt (copy verbatim into code)
 
@@ -43,47 +36,3 @@ OUTPUT SCHEMA:
   "trust_indicators": ["<indicator>", ...]
 }
 ```
-
----
-
-## Usage in Code
-
-```python
-# app/mcp/tools/search_tools.py
-
-SUMMARIZE_SYSTEM_PROMPT = open("app/mcp/prompts/summarize_extract.txt").read()
-
-async def summarize_and_extract(raw_text: str, source_url: str, topic_context: str | None) -> ExtractionResult:
-    # Strip HTML and truncate BEFORE sending to LLM
-    clean_text = strip_html(raw_text)[:8000]
-
-    # Reject if too short after cleaning
-    if len(clean_text) < 200:
-        raise ArticleTooShortError(f"Article too short after cleaning: {len(clean_text)} chars")
-
-    user_content = f"""<article source="{source_url}" topic_context="{topic_context or 'general'}">
-{clean_text}
-</article>"""
-
-    response = await openai_client.chat_complete(
-        system=SUMMARIZE_SYSTEM_PROMPT,
-        user=user_content,
-        temperature=0.0,
-        max_tokens=600,
-        response_format={"type": "json_object"}
-    )
-    return ExtractionResult.model_validate_json(response)
-```
-
----
-
-## Guardrail: Post-Extraction Validation
-
-After parsing, enforce in `app/mcp/guardrails.py`:
-
-- `summary` must be non-empty and under 500 characters — truncate at 500 if exceeded.
-- Drop unrecognized values from `topic_tags` (same allowed list as classify_request).
-- `geo_tags` must be non-empty — default to `["india"]` if missing.
-- `event_date`: if present, must parse as a valid ISO date — if it fails to parse, set to `null`. Never let an invalid date string reach the DB.
-- `entities` sub-arrays: cap each at 10 items. Drop extras silently.
-- `trust_indicators`: cap at 5 items.

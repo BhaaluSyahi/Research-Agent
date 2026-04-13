@@ -1,8 +1,4 @@
-"""
-Internal health and status endpoints.
-These are the only HTTP endpoints exposed — this service does not serve the frontend or core backend.
-"""
-
+from fastapi import Request
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -11,7 +7,6 @@ router = APIRouter(tags=["health"])
 
 class HealthResponse(BaseModel):
     status: str
-
 
 class StatusResponse(BaseModel):
     status: str

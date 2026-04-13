@@ -1,7 +1,3 @@
-"""
-Validates and deserializes incoming SQS messages from the core backend.
-"""
-
 from app.core.exceptions import InvalidMessageError
 from app.mcp.guardrails import check_prompt_injection
 from app.submodules.matching.schemas import RequestRecord

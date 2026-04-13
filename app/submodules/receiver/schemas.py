@@ -1,7 +1,4 @@
-"""Pydantic schemas for the receiver submodule (SQS message wrappers)."""
-
 from pydantic import BaseModel
-
 
 class RawSQSMessage(BaseModel):
     """Represents the raw SQS message envelope (not the request payload)."""

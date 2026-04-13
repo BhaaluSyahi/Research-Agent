@@ -1,13 +1,8 @@
-"""
-Structured JSON logger using structlog.
-All modules must import `get_logger` from here — never use print() or stdlib logging directly.
-"""
-
+# Planning to use structlog based standard JSON logging for expanding it as a real product sometime...?
 import logging
 import sys
 
 import structlog
-
 
 def configure_logging() -> None:
     """Configure structlog for JSON output. Call once at application startup."""

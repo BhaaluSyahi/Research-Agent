@@ -17,7 +17,7 @@ class MCPServer:
     """
 
     def __init__(self) -> None:
-        self._tools: Dict[str, Callable] = {}
+        self._tools: Dict[str, Callable] = {} # The best we can do to simulate private members
 
     def register(self, name: str, handler: Callable) -> None:
         """Register a tool handler by name."""
@@ -25,12 +25,6 @@ class MCPServer:
         logger.info("mcp_tool_registered", tool=name)
 
     async def call(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
-        """
-        Dispatch a tool call from the LLM.
-        1. Validate tool exists
-        2. Run global input guardrails (on any string inputs)
-        3. Execute tool-specific logic
-        """
         # 1. Global registry check
         validate_tool_call(tool_name, tool_input, set(self._tools.keys()))
         
