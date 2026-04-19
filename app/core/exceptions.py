@@ -25,12 +25,14 @@ class OptimisticLockError(RepositoryError):
 # External Services
 class TavilyError(MatchingEngineError):
     """Tavily API call failed."""
-class OpenAIError(MatchingEngineError):
-    """OpenAI API call failed."""
-class EmbeddingError(OpenAIError):
+class LLMError(MatchingEngineError):
+    """LLM API call failed (Gemini)."""
+class EmbeddingError(LLMError):
     """Embedding generation failed."""
-class ChatCompletionError(OpenAIError):
+class ChatCompletionError(LLMError):
     """Chat completion call failed."""
+# Backward-compatible alias
+OpenAIError = LLMError
 class SQSError(MatchingEngineError):
     """AWS SQS operation failed."""
 class SNSError(MatchingEngineError):

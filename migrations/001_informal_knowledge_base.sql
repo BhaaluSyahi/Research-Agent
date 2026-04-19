@@ -18,7 +18,7 @@ CREATE TABLE informal_news_entries (
     event_date DATE,                        -- When the event happened (extracted or null)
     indexed_at TIMESTAMPTZ DEFAULT NOW(),
     last_validated_at TIMESTAMPTZ,          -- When trust score was last re-evaluated
-    embedding VECTOR(1536),                 -- text-embedding-3-small output
+    embedding VECTOR(768),                 -- text-embedding-3-small output
     is_active BOOLEAN DEFAULT TRUE,         -- FALSE = soft deleted
     version INTEGER DEFAULT 1,             -- Optimistic locking for concurrent updates
     indexed_by TEXT                         -- Which agent indexed this: 'floods_agent', 'on_demand', etc.

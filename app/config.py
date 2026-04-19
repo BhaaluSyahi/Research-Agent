@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     sqs_enrich_environment_url: str = ""
     sqs_enrich_regional_url: str = ""
 
-    # OpenAI
-    openai_api_key: str
-    openai_embedding_model: str = "text-embedding-3-small"
-    openai_chat_model: str = "gpt-4o"
+    # Gemini
+    gemini_api_key: str
+    gemini_embedding_model: str = "text-embedding-004"
+    gemini_chat_model: str = "gemini-2.0-flash"
 
     # Tavily
     tavily_api_key: str

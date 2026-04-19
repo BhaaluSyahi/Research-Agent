@@ -12,3 +12,6 @@ wheels/
 # Env Files
 *.env
 *antigravity-context/
+
+# Temp files
+seed_output.txt

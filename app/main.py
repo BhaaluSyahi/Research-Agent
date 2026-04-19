@@ -8,7 +8,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from supabase import create_client as create_supabase_client
-from openai import AsyncOpenAI
+from google import genai
 from tavily import AsyncTavilyClient
 import boto3
 
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 1. Initialize External Clients
     supabase = create_supabase_client(settings.supabase_url, settings.supabase_key)
-    openai = AsyncOpenAI(api_key=settings.openai_api_key)
+    gemini = genai.Client(api_key=settings.gemini_api_key)
     tavily = AsyncTavilyClient(api_key=settings.tavily_api_key)
     
     sqs_client = boto3.client(
@@ -72,9 +72,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     kpi_repo = SupabaseKpiRepository(supabase)
     sqs_repo = SQSRepository(sqs_client)
     openai_repo = OpenAIClientRepository(
-        openai, 
-        embedding_model="text-embedding-3-small", 
-        chat_model="gpt-4o"
+        gemini,
+        embedding_model=settings.gemini_embedding_model,
+        chat_model=settings.gemini_chat_model
     )
     tavily_repo = TavilyRepository(tavily)
 
