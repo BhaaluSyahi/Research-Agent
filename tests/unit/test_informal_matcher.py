@@ -12,9 +12,9 @@ from app.repositories.supabase_informal import InformalEntry, InformalEntryEntit
 async def test_informal_matcher_success(mocker):
     # Mock repos
     mock_informal_repo = mocker.AsyncMock()
-    mock_openai_repo = mocker.AsyncMock()
+    mock_gemini_repo = mocker.AsyncMock()
     
-    matcher = InformalMatcher(mock_informal_repo, mock_openai_repo)
+    matcher = InformalMatcher(mock_informal_repo, mock_gemini_repo)
     
     # Setup test data
     request = RequestRecord(
@@ -31,7 +31,7 @@ async def test_informal_matcher_success(mocker):
         updated_at=datetime.utcnow()
     )
     
-    mock_openai_repo.embed.return_value = [0.1] * 1536
+    mock_gemini_repo.embed.return_value = [0.1] * 768
     
     mock_entries = [
         InformalEntry(
@@ -58,5 +58,5 @@ async def test_informal_matcher_success(mocker):
     assert matches[0].title == "News 1"
     assert matches[0].cosine_score == 0.88
     assert matches[0].entities["people"] == ["Person A"]
-    mock_openai_repo.embed.assert_called_once_with(request.description)
+    mock_gemini_repo.embed.assert_called_once_with(request.description)
     mock_informal_repo.search_similar.assert_called_once()

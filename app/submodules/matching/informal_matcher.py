@@ -6,7 +6,7 @@ Embeds the request and queries pgvector in Supabase.
 from typing import Optional
 from app.core.logging import get_logger
 from app.repositories.supabase_informal import SupabaseInformalRepository, SearchFilters
-from app.repositories.openai_client import OpenAIClientRepository
+from app.repositories.gemini_client import GeminiClientRepository
 from app.submodules.matching.schemas import InformalMatch, RequestRecord
 
 logger = get_logger(__name__)
@@ -15,10 +15,10 @@ class InformalMatcher:
     def __init__(
         self, 
         informal_repo: SupabaseInformalRepository,
-        openai_repo: OpenAIClientRepository
+        gemini_repo: GeminiClientRepository
     ):
         self.informal_repo = informal_repo
-        self.openai_repo = openai_repo
+        self.gemini_repo = gemini_repo
 
     async def match(
         self, 
@@ -34,7 +34,7 @@ class InformalMatcher:
         logger.info("informal_matching_started", request_id=str(request.id))
         
         # 1. Embed
-        embedding = await self.openai_repo.embed(request.description)
+        embedding = await self.gemini_repo.embed(request.description)
         
         # 2. Search
         filters = SearchFilters(

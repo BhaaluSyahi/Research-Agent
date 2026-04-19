@@ -4,9 +4,9 @@ Written by the future Strategy Module; this service only reads and updates last_
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from supabase import AsyncClient
 
 from app.core.exceptions import RepositoryError
@@ -40,6 +40,13 @@ class SearchStrategy(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("geo_focus", "search_queries", mode="before")
+    @classmethod
+    def ensure_list(cls, v: Any) -> list:
+        if v is None:
+            return []
+        return v
+
 
 class SupabaseStrategyRepository(BaseRepository):
     def __init__(self, client: AsyncClient) -> None:
@@ -48,17 +55,17 @@ class SupabaseStrategyRepository(BaseRepository):
     async def get_strategy_for_topic(self, topic: str) -> SearchStrategy | None:
         """Return the search strategy row for the given topic slug, or None."""
         try:
-            response = (
-                await self.client.table("search_strategy")
+            response = await (
+                self.client.table("search_strategy")
                 .select("*")
                 .eq("topic", topic)
                 .eq("is_active", True)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            if response.data is None:
+            if not response.data:
                 return None
-            return SearchStrategy.model_validate(response.data)
+            return SearchStrategy.model_validate(response.data[0])
         except Exception as exc:
             logger.error(
                 "get_strategy_for_topic_failed",
@@ -72,8 +79,8 @@ class SupabaseStrategyRepository(BaseRepository):
     async def get_all_active_strategies(self) -> list[SearchStrategy]:
         """Return all active strategy rows (is_active=True)."""
         try:
-            response = (
-                await self.client.table("search_strategy")
+            response = await (
+                self.client.table("search_strategy")
                 .select("*")
                 .eq("is_active", True)
                 .execute()

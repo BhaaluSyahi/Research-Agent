@@ -28,13 +28,13 @@ async def test_get_by_content_hash_found(mocker) -> None:
     mock_table = mocker.MagicMock()
     mock_select = mocker.MagicMock()
     mock_eq = mocker.MagicMock()
-    mock_maybe_single = mocker.MagicMock()
+    mock_limit = mocker.MagicMock()
+    mock_limit.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=[mock_data]))
 
     mock_client.table.return_value = mock_table
     mock_table.select.return_value = mock_select
     mock_select.eq.return_value = mock_eq
-    mock_eq.maybe_single.return_value = mock_maybe_single
-    mock_maybe_single.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=mock_data))
+    mock_eq.limit.return_value = mock_limit
 
     entry = await repo.get_by_content_hash(content_hash)
 
@@ -66,7 +66,7 @@ async def test_upsert_entry_optimistic_lock_fail(mocker) -> None:
         content_hash=content_hash,
         summary="New",
         source_url="https://ex.com",
-        embedding=[0.1] * 1536,
+        embedding=[0.1] * 768,
         indexed_by="test",
         version=1  # Version mismatch!
     )
@@ -80,7 +80,7 @@ async def test_search_similar(mocker) -> None:
     mock_client = mocker.AsyncMock(spec=AsyncClient)
     repo = SupabaseInformalRepository(mock_client)
     
-    embedding = [0.1] * 1536
+    embedding = [0.1] * 768
     mock_data = [
         {
             "id": str(uuid4()),

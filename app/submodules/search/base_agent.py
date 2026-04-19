@@ -125,6 +125,9 @@ class BaseSearchAgent(ABC):
                                 
                                 if created:
                                     new_entries += 1
+                                    
+                                # Smooth out requests to avoid hitting rate limits too quickly
+                                await asyncio.sleep(1.0)
                             except Exception as e:
                                 logger.error("index_failed", url=res.get("url"), error=str(e))
                                 failed_count += 1

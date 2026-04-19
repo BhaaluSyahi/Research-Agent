@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Modes
+    dev_mode: bool = False
+
     # Supabase
     supabase_url: str
     supabase_key: str  # service role key — never the anon key
@@ -16,7 +19,6 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     sqs_requests_queue_url: str
-    sns_topic_router_arn: str
 
     # SQS enrichment queues (one per topic)
     sqs_enrich_floods_url: str = ""
@@ -69,4 +71,4 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
-settings = Settings()  # type: ignore[call-arg]
+settings = Settings()

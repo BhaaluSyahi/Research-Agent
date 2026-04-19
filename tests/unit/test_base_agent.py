@@ -28,8 +28,8 @@ def mock_repos():
 async def test_base_agent_run_success(mock_repos):
     # Setup mock strategy
     strategy = SearchStrategy(
-        id="test-id",
-        topic="test_topic",
+        id="33bdcffe-d60c-4fb3-b01a-0ae0112e9998",
+        topic="drought",
         search_queries=[SearchStrategyQuery(query="test query", weight=1.0)],
         is_active=True,
         geo_focus=["kerala"],

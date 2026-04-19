@@ -64,7 +64,7 @@ class InformalEntryCreate(BaseModel):
     topic_tags: list[str] = []
     geo_tags: list[str] = []
     event_date: Optional[date] = None
-    embedding: list[float]                  # 1536-dimensional
+    embedding: list[float]                  # 768-dimensional (Gemini)
     indexed_by: str
     version: int = 1                        # used for optimistic lock on create
 
@@ -86,20 +86,20 @@ class SupabaseInformalRepository(BaseRepository):
     async def get_by_content_hash(self, content_hash: str) -> InformalEntry | None:
         """Return an entry matching the SHA256 content hash, or None."""
         try:
-            response = (
-                await self.client.table("informal_news_entries")
+            response = await (
+                self.client.table("informal_news_entries")
                 .select(
                     "id, content_hash, title, summary, raw_snippet, source_url, "
                     "source_domain, trust_score, entities, topic_tags, geo_tags, "
                     "event_date, indexed_at, last_validated_at, is_active, version, indexed_by"
                 )
                 .eq("content_hash", content_hash)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            if response.data is None:
+            if not response.data:
                 return None
-            return InformalEntry.model_validate(response.data)
+            return InformalEntry.model_validate(response.data[0])
         except Exception as exc:
             logger.error(
                 "get_by_content_hash_failed",
@@ -132,8 +132,8 @@ class SupabaseInformalRepository(BaseRepository):
                 payload["version"] = new_version
                 payload["is_active"] = True
 
-                response = (
-                    await self.client.table("informal_news_entries")
+                response = await (
+                    self.client.table("informal_news_entries")
                     .update(payload)
                     .eq("content_hash", entry.content_hash)
                     .execute()
@@ -143,8 +143,8 @@ class SupabaseInformalRepository(BaseRepository):
                 # New entry — insert
                 payload = entry.model_dump(mode="json")
                 payload["is_active"] = True
-                response = (
-                    await self.client.table("informal_news_entries")
+                response = await (
+                    self.client.table("informal_news_entries")
                     .insert(payload)
                     .execute()
                 )

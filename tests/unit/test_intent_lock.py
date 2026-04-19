@@ -10,9 +10,9 @@ async def test_intent_lock_acquire_success(mocker):
     mock_sqs_repo.publish_message.return_value = "msg-123"
     
     lock = IntentLock(mock_sqs_repo)
-    msg_id = await lock.acquire(topic="floods", geo="Kerala", year=2025)
+    async with lock.acquire("floods#Kerala#2025") as locked:
+        assert locked is True
     
-    assert msg_id == "msg-123"
     mock_sqs_repo.publish_message.assert_called_once()
     
     # Check that MessageGroupId and DeduplicationId are present
@@ -27,5 +27,5 @@ async def test_intent_lock_acquire_failure(mocker):
     mock_sqs_repo.publish_message.side_effect = Exception("SQS Down")
     
     lock = IntentLock(mock_sqs_repo)
-    with pytest.raises(IntentLockError, match="Failed to acquire intent lock"):
-        await lock.acquire(topic="floods", geo="Kerala", year=2025)
+    async with lock.acquire("floods#Kerala#2025") as locked:
+        assert locked is False

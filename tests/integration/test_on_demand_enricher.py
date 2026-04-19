@@ -12,7 +12,13 @@ async def test_on_demand_enricher_integration(mocker):
     # Mock dependencies
     mock_search_tools = mocker.AsyncMock()
     mock_indexer = mocker.AsyncMock()
-    mock_intent_lock = mocker.AsyncMock()
+    
+    # Mocking an async context manager
+    mock_lock_ctx = mocker.AsyncMock()
+    mock_lock_ctx.__aenter__.return_value = True
+    
+    mock_intent_lock = mocker.MagicMock()
+    mock_intent_lock.acquire.return_value = mock_lock_ctx
     
     enricher = OnDemandEnricher(mock_search_tools, mock_indexer, mock_intent_lock)
     
@@ -50,11 +56,8 @@ async def test_on_demand_enricher_integration(mocker):
     assert mock_search_tools.web_search.called
     assert mock_indexer.index.call_count == 2
     
-    # Check that it skips if lock fails
-    mock_intent_lock.acquire.side_effect = Exception("Already locked") # Or IntentLockError
-    # Wait, I need to raise IntentLockError specifically or fix the catch
-    from app.submodules.search.intent_lock import IntentLockError
-    mock_intent_lock.acquire.side_effect = IntentLockError("Locked")
+    # Check that it skips if lock is False
+    mock_lock_ctx.__aenter__.return_value = False
     
     new_articles_skip = await enricher.enrich_and_retry(request, "floods")
     assert new_articles_skip == 0

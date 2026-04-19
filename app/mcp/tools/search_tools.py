@@ -5,7 +5,7 @@ Search MCP tools: web_search, classify_request.
 from pydantic import BaseModel
 from app.core.logging import get_logger
 from app.repositories.tavily import TavilyRepository
-from app.repositories.openai_client import OpenAIClientRepository
+from app.repositories.gemini_client import GeminiClientRepository
 
 logger = get_logger(__name__)
 
@@ -17,9 +17,9 @@ class ClassificationOutput(BaseModel):
 
 
 class SearchTools:
-    def __init__(self, tavily_repo: TavilyRepository, openai_repo: OpenAIClientRepository):
+    def __init__(self, tavily_repo: TavilyRepository, gemini_repo: GeminiClientRepository):
         self.tavily_repo = tavily_repo
-        self.openai_repo = openai_repo
+        self.gemini_repo = gemini_repo
 
     async def web_search(
         self,
@@ -56,7 +56,7 @@ class SearchTools:
         
         user_message = f"<user_request>\nTitle: {title}\nDescription: {description}\n</user_request>"
         
-        raw_response = await self.openai_repo.chat_complete(
+        raw_response = await self.gemini_repo.chat_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             response_format=ClassificationOutput

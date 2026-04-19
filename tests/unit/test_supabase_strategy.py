@@ -26,14 +26,14 @@ async def test_get_strategy_for_topic_found(mocker) -> None:
     mock_select = mocker.MagicMock()
     mock_eq_1 = mocker.MagicMock()
     mock_eq_2 = mocker.MagicMock()
-    mock_maybe_single = mocker.MagicMock()
+    mock_limit = mocker.MagicMock()
+    mock_limit.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=[mock_data]))
 
     mock_client.table.return_value = mock_table
     mock_table.select.return_value = mock_select
     mock_select.eq.return_value = mock_eq_1
     mock_eq_1.eq.return_value = mock_eq_2
-    mock_eq_2.maybe_single.return_value = mock_maybe_single
-    mock_maybe_single.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=mock_data))
+    mock_eq_2.limit.return_value = mock_limit
 
     strategy = await repo.get_strategy_for_topic("floods")
 

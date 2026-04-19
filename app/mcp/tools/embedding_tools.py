@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
 from app.mcp.guardrails import validate_llm_output
-from app.repositories.openai_client import OpenAIClientRepository
+from app.repositories.gemini_client import GeminiClientRepository
 
 logger = get_logger(__name__)
 
@@ -29,16 +29,16 @@ class SummarizeExtractOutput(BaseModel):
 
 
 class EmbeddingTools:
-    def __init__(self, openai_repo: OpenAIClientRepository):
-        self.openai_repo = openai_repo
+    def __init__(self, gemini_repo: GeminiClientRepository):
+        self.gemini_repo = gemini_repo
 
     async def embed_text(self, text: str) -> list[float]:
         """
-        MCP tool: generate a 1536-dimensional embedding.
+        MCP tool: generate a 768-dimensional embedding.
         Truncates input at 8000 characters.
         """
         truncated = text[:8000]
-        return await self.openai_repo.embed(truncated)
+        return await self.gemini_repo.embed(truncated)
 
     async def summarize_and_extract(self, raw_text: str, source_url: str) -> dict:
         """
@@ -59,7 +59,7 @@ class EmbeddingTools:
         
         user_message = f"Source URL: {source_url}\n\nContent:\n{truncated}"
         
-        raw_response = await self.openai_repo.chat_complete(
+        raw_response = await self.gemini_repo.chat_complete(
             system_prompt=system_prompt,
             user_message=user_message,
             response_format=SummarizeExtractOutput

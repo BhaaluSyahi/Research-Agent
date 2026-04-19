@@ -1,12 +1,11 @@
 """
 GeminiClientRepository — embedding generation and chat completion via Google Gemini.
 All LLM calls in the codebase go through this class.
-
-Previously OpenAIClientRepository; re-implemented on top of google-genai SDK.
-The class is aliased as OpenAIClientRepository so existing imports need zero changes.
 """
 
+import asyncio
 import json
+import random
 from typing import Any, Optional, Type, TypeVar
 
 from google import genai
@@ -27,6 +26,35 @@ class GeminiClientRepository(BaseRepository):
         self.client = client
         self.embedding_model = embedding_model
         self.chat_model = chat_model
+        self._semaphore = asyncio.Semaphore(2)  # Cap concurrent LLM calls
+
+    async def _call_with_retry(self, func: Any, *args, **kwargs) -> Any:
+        """Generic retry wrapper for Gemini calls to handle 429 RESOURCE_EXHAUSTED."""
+        max_retries = 5
+        base_delay = 10.0  # Start with 10s delay for 429s
+
+        for attempt in range(max_retries):
+            async with self._semaphore:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as exc:
+                    err_msg = str(exc).upper()
+                    is_rate_limit = "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg
+                    
+                    if is_rate_limit and attempt < max_retries - 1:
+                        # Exponential backoff: 10s, 20s, 40s, 80s... with jitter
+                        delay = (base_delay * (2 ** attempt)) + (random.random() * 2)
+                        logger.warning(
+                            "gemini_rate_limited_retrying",
+                            attempt=attempt + 1,
+                            delay_seconds=round(delay, 2),
+                            error=str(exc)
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    
+                    # If not a rate limit or we're out of retries, re-raise
+                    raise
 
     async def embed(self, text: str) -> list[float]:
         """
@@ -34,7 +62,8 @@ class GeminiClientRepository(BaseRepository):
         Uses text-embedding-004 by default.
         """
         try:
-            response = await self.client.aio.models.embed_content(
+            response = await self._call_with_retry(
+                self.client.aio.models.embed_content,
                 model=self.embedding_model,
                 contents=text,
                 config=genai_types.EmbedContentConfig(
@@ -71,10 +100,6 @@ class GeminiClientRepository(BaseRepository):
         """
         Run a chat completion call via Gemini.
         Returns the raw text content of the model response.
-
-        If response_format is a Pydantic model subclass, uses structured output
-        (response_schema + response_mime_type='application/json') and returns
-        the JSON string of the parsed model so callers can do model_validate_json().
         """
         contents = [
             genai_types.Content(
@@ -93,20 +118,18 @@ class GeminiClientRepository(BaseRepository):
             config_kwargs["response_schema"] = response_format
 
         try:
-            response = await self.client.aio.models.generate_content(
+            response = await self._call_with_retry(
+                self.client.aio.models.generate_content,
                 model=self.chat_model,
                 contents=contents,
                 config=genai_types.GenerateContentConfig(**config_kwargs),
             )
 
             if response_format is not None and issubclass(response_format, BaseModel):
-                # SDK populates .parsed when response_schema is a Pydantic model
                 if response.parsed is not None:
                     content = response.parsed.model_dump_json()
                 else:
-                    # Fallback: parse the raw text ourselves
                     content = response.text or "{}"
-                    # Validate it parses — let caller handle bad JSON
             else:
                 content = response.text or ""
 
@@ -130,5 +153,3 @@ class GeminiClientRepository(BaseRepository):
             raise ChatCompletionError(f"Chat completion failed: {exc}") from exc
 
 
-# Alias — all existing imports of OpenAIClientRepository continue to work unchanged.
-OpenAIClientRepository = GeminiClientRepository

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import asyncio
 from typing import Dict, Type
 
@@ -85,22 +85,35 @@ class SearchScheduler:
     async def schedule_all_active(self):
         """Fetch all active strategies and register jobs for them."""
         strategies = await self.strategy_repo.get_all_active_strategies()
-        for strategy in strategies:
+        logger.info("scheduling_active_strategies", count=len(strategies), topics=[s.topic for s in strategies])
+        
+        for i, strategy in enumerate(strategies):
             if strategy.topic in self.agents:
                 continue
                 
             agent = self._get_agent(strategy.topic)
             if agent:
                 self.agents[strategy.topic] = agent
+                # Stagger the first run to avoid hitting Gemini rate limits (15 RPM)
+                # Spread starts by 20 seconds each
+                initial_delay = i * 20
+                run_at = datetime.now(timezone.utc) + timedelta(seconds=initial_delay)
+                
                 self.scheduler.add_job(
                     self._run_agent,
                     trigger=IntervalTrigger(hours=strategy.crawl_frequency_hours),
                     args=[strategy.topic],
                     id=f"crawl_{strategy.topic}",
                     name=f"Crawl agent for {strategy.topic}",
-                    replace_existing=True
+                    replace_existing=True,
+                    next_run_time=run_at
                 )
-                logger.info("agent_scheduled", topic=strategy.topic, interval_hours=strategy.crawl_frequency_hours)
+                logger.info(
+                    "agent_scheduled", 
+                    topic=strategy.topic, 
+                    interval_hours=strategy.crawl_frequency_hours,
+                    first_run_at=run_at.isoformat()
+                )
 
     def get_status(self) -> dict:
         """Return status info for monitoring."""

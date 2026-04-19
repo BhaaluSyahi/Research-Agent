@@ -31,12 +31,8 @@ class EmbeddingError(LLMError):
     """Embedding generation failed."""
 class ChatCompletionError(LLMError):
     """Chat completion call failed."""
-# Backward-compatible alias
-OpenAIError = LLMError
 class SQSError(MatchingEngineError):
     """AWS SQS operation failed."""
-class SNSError(MatchingEngineError):
-    """AWS SNS publish failed."""
 
 
 # MCP / Tool Layer

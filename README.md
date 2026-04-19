@@ -16,7 +16,7 @@ Production-grade research and matching engine for connecting help requests with 
 - **FastAPI**: Main API framework.
 - **Supabase**: PostgreSQL DB, Vector storage (pgvector), and Edge Functions.
 - **AWS SQS**: Message queue for decoupled request processing and enrichment jobs.
-- **OpenAI**: Embeddings and GPT-4o for classification, summarization, and matching.
+- **Gemini**: Embeddings and Chat model for classification, summarization, and matching.
 - **Tavily**: Web search optimized for LLM agents.
 
 ## Implementation Details
@@ -37,7 +37,7 @@ The engine enforces several guardrails:
 1.  **Clone the repository**
 2.  **Install dependencies**:
     ```bash
-    pip install -r requirements.txt
+    uv sync
     ```
 3.  **Configure Environment Variables**:
     Create a `.env` file with:
@@ -45,7 +45,7 @@ The engine enforces several guardrails:
     - `SUPABASE_KEY` (Service Role)
     - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
     - `SQS_REQUESTS_QUEUE_URL`
-    - `OPENAI_API_KEY`
+    - `GEMINI_API_KEY`
     - `TAVILY_API_KEY`
 
 4.  **Seed Search Strategies**:
@@ -55,12 +55,5 @@ The engine enforces several guardrails:
 
 5.  **Run the application**:
     ```bash
-    uvicorn app.main:app --host 0.0.0.0 --port 8000
+    uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
     ```
-
-## Testing
-
-Run unit tests:
-```bash
-pytest tests/unit
-```

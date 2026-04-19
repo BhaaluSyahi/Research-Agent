@@ -31,8 +31,8 @@ class SupabaseFormalRepository(BaseRepository):
     async def get_registered_organizations(self) -> list[OrganizationRecord]:
         """Return all organizations with status='registered'."""
         try:
-            response = (
-                await self.client.table("organizations")
+            response = await (
+                self.client.table("organizations")
                 .select("*")
                 .eq("status", "registered")
                 .execute()
@@ -51,8 +51,8 @@ class SupabaseFormalRepository(BaseRepository):
         """Return all volunteer profiles where the linked user is active."""
         try:
             # Join volunteer_profiles with users, filtering for is_active=True users
-            response = (
-                await self.client.table("volunteer_profiles")
+            response = await (
+                self.client.table("volunteer_profiles")
                 .select("*, users!inner(is_active)")
                 .eq("users.is_active", True)
                 .execute()
@@ -75,16 +75,16 @@ class SupabaseFormalRepository(BaseRepository):
     async def get_request_by_id(self, request_id: UUID) -> RequestRecord | None:
         """Fetch a single request row by primary key. Returns None if not found."""
         try:
-            response = (
-                await self.client.table("requests")
+            response = await (
+                self.client.table("requests")
                 .select("*")
                 .eq("id", str(request_id))
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            if response.data is None:
+            if not response.data:
                 return None
-            return RequestRecord.model_validate(response.data)
+            return RequestRecord.model_validate(response.data[0])
         except Exception as exc:
             logger.error(
                 "get_request_by_id_failed",

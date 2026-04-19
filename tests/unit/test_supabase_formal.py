@@ -68,13 +68,13 @@ async def test_get_request_by_id_found(mocker) -> None:
     mock_table = mocker.MagicMock()
     mock_select = mocker.MagicMock()
     mock_eq = mocker.MagicMock()
-    mock_maybe_single = mocker.MagicMock()
+    mock_limit = mocker.MagicMock()
+    mock_limit.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=[mock_data]))
 
     mock_client.table.return_value = mock_table
     mock_table.select.return_value = mock_select
     mock_select.eq.return_value = mock_eq
-    mock_eq.maybe_single.return_value = mock_maybe_single
-    mock_maybe_single.execute = mocker.AsyncMock(return_value=mocker.MagicMock(data=mock_data))
+    mock_eq.limit.return_value = mock_limit
 
     result = await repo.get_request_by_id(request_id)
 

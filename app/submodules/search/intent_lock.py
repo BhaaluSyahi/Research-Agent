@@ -12,6 +12,8 @@ class IntentLockError(Exception):
     pass
 
 
+from contextlib import asynccontextmanager
+
 class IntentLock:
     """
     Publishes a sentinel SQS message to claim an intent lock.
@@ -28,15 +30,22 @@ class IntentLock:
         url = getattr(settings, attr_name, settings.sqs_requests_queue_url) # fallback
         return url
 
-    async def acquire(self, topic: str, geo: str, year: int) -> str:
+    @asynccontextmanager
+    async def acquire(self, group_id: str):
         """
         Attempt to acquire the intent lock for the given topic/geo/year combination.
         Returns the SQS MessageId.
         
         Using SQS FIFO deduplication as a locking mechanism.
+        Yields True if successful, False if acquisition failed (though currently we treat all successful publishes as locked).
         """
+        # Parse group_id (topic#geo#year)
+        parts = group_id.split("#")
+        topic = parts[0] if len(parts) > 0 else "regional"
+        geo = parts[1] if len(parts) > 1 else "india"
+        year = parts[2] if len(parts) > 2 else str(datetime.utcnow().year)
+        
         queue_url = self._get_queue_url(topic)
-        group_id = f"{topic}#{geo}#{year}"
         
         # We use a 5-minute window for the deduplication ID to match SQS FIFO limits.
         # This prevents two searches for the same intent within 5 minutes.
@@ -44,6 +53,7 @@ class IntentLock:
         dedup_seed = f"{group_id}#{now_ts}"
         deduplication_id = hashlib.sha256(dedup_seed.encode()).hexdigest()
         
+        msg_id = None
         try:
             msg_id = await self.sqs_repo.publish_message(
                 queue_url=queue_url,
@@ -51,10 +61,22 @@ class IntentLock:
                 message_group_id=group_id,
                 deduplication_id=deduplication_id
             )
-            return msg_id
+            logger.info("intent_lock_acquired", group_id=group_id, msg_id=msg_id)
+            yield True
         except Exception as e:
-            logger.error("intent_lock_acquisition_failed", topic=topic, geo=geo, error=str(e))
-            raise IntentLockError(f"Failed to acquire intent lock: {e}")
+            logger.warning("intent_lock_acquisition_failed", group_id=group_id, error=str(e))
+            # In context manager mode, we yield False instead of raising if we want to skip
+            # But the original code raised IntentLockError. Let's raise if it's a real SQS error.
+            # Actually, per the usage in on_demand.py and base_agent.py:
+            # if not locked: return
+            # So we should yield False on failure.
+            yield False
+        finally:
+            if msg_id:
+                # Release is a noop for SQS FIFO locks sender-side
+                # The lock is essentially held until the 5-min dedup window expires
+                # or until a consumer processes and deletes the message.
+                pass
 
     async def release(self, topic: str, message_id: str) -> None:
         """
