@@ -77,15 +77,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 2. Initialize Repositories
     formal_repo = SupabaseFormalRepository(supabase)
     informal_repo = SupabaseInformalRepository(supabase)
-    strategy_repo = SupabaseStrategyRepository(supabase)
     kpi_repo = SupabaseKpiRepository(supabase)
     app.state.kpi_repo = kpi_repo
-    
+
     if is_dev:
         from app.repositories.sqs_dev import DevSQSRepository
+        from app.repositories.strategy_dev import DevStrategyRepository
         sqs_repo = DevSQSRepository()
+        strategy_repo = DevStrategyRepository()
     else:
         sqs_repo = SQSRepository(sqs_client)
+        strategy_repo = SupabaseStrategyRepository(supabase)
         
     gemini_repo = GeminiClientRepository(
         gemini,

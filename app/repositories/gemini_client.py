@@ -68,6 +68,7 @@ class GeminiClientRepository(BaseRepository):
                 contents=text,
                 config=genai_types.EmbedContentConfig(
                     task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=768,
                 ),
             )
             # response.embeddings is a list of ContentEmbedding objects

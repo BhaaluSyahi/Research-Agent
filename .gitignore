@@ -14,7 +14,7 @@ wheels/
 *antigravity-context/
 
 # Temp files
-*seed_output.txt
-*migrations
-*scripts
-*llm_prompts
+# *seed_output.txt
+# *migrations
+# *scripts
+# *llm_prompts
